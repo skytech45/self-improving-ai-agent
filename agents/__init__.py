@@ -1,1 +1,1 @@
-"""Skill agent modules: coding, web, security."""
+"""Multi-agent intelligence: Builder, Critic, Security, Optimizer + consensus."""
