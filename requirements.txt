@@ -1,0 +1,17 @@
+# Self-Improving AI Agent System — Dependencies
+requests>=2.31.0
+pyyaml>=6.0.1
+openai>=1.14.0
+faiss-cpu>=1.7.4
+numpy>=1.24.0
+fastapi>=0.110.0
+uvicorn>=0.27.0
+pydantic>=2.6.0
+flake8>=7.0.0
+mypy>=1.8.0
+pytest>=8.0.0
+pytest-cov>=4.1.0
+schedule>=1.2.1
+python-dotenv>=1.0.0
+colorama>=0.4.6
+rich>=13.7.0
