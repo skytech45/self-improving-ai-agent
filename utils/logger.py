@@ -1,55 +1,66 @@
 """
 utils/logger.py
-Centralized logging setup for the AI Agent System.
-All modules use this logger for consistent formatting and output.
+
+Centralized logging factory.
+All modules call get_logger(name) — consistent format + file output.
 """
+from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import Optional
 
 
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
 
+_loggers: dict = {}
 
-def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+
+def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     """
-    Create and configure a named logger with console + file handlers.
+    Get or create a named logger with console + daily file handlers.
 
     Args:
-        name:  Logger name (usually module/class name)
-        level: Logging level (default: INFO)
+        name:  Logger name (module / class)
+        level: Log level (default: INFO)
 
     Returns:
-        Configured Logger instance
+        Configured Logger instance (cached — no duplicate handlers)
     """
+    if name in _loggers:
+        return _loggers[name]
+
     logger = logging.getLogger(name)
-
-    # Avoid duplicate handlers
-    if logger.handlers:
-        return logger
-
     logger.setLevel(level)
+    logger.propagate = False
 
-    formatter = logging.Formatter(
-        fmt="%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
+    if not logger.handlers:
+        fmt = logging.Formatter(
+            "%(asctime)s | %(name)-22s | %(levelname)-7s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
-    # Console handler
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(level)
-    console.setFormatter(formatter)
-    logger.addHandler(console)
+        # Console
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setLevel(level)
+        ch.setFormatter(fmt)
+        logger.addHandler(ch)
 
-    # File handler (daily rotating)
-    today     = datetime.utcnow().strftime("%Y-%m-%d")
-    log_file  = LOG_DIR / f"agent_{today}.log"
-    file_hdlr = logging.FileHandler(log_file, encoding="utf-8")
-    file_hdlr.setLevel(logging.DEBUG)
-    file_hdlr.setFormatter(formatter)
-    logger.addHandler(file_hdlr)
+        # Daily rotating file
+        today    = datetime.utcnow().strftime("%Y-%m-%d")
+        log_file = LOG_DIR / f"agent_{today}.log"
+        fh       = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(fmt)
+        logger.addHandler(fh)
 
+    _loggers[name] = logger
     return logger
+
+
+# Legacy alias for backwards compatibility
+def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+    return get_logger(name, level)
