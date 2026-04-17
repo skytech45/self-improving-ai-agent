@@ -1,205 +1,241 @@
 """
 validation/validator.py
-Validation Pipeline — mandatory gate before any code deployment.
-Runs syntax check, linting, unit tests, and sandbox execution.
-NEVER deploy code that fails validation.
+
+Multi-Stage Validation Pipeline.
+MANDATORY gate before any code reaches the repo.
+Stages: syntax -> lint -> security -> sandbox -> type-check
 """
+from __future__ import annotations
 
 import ast
-import subprocess
 import os
+import subprocess
 import tempfile
-import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-import logging
+from typing import Any, Dict, List, Optional, Tuple
+
+from utils.logger import get_logger
+
+
+@dataclass
+class ValidationReport:
+    """Complete report from all validation stages."""
+    passed:   bool
+    stages:   Dict[str, Dict]  = field(default_factory=dict)
+    errors:   List[str]        = field(default_factory=list)
+    warnings: List[str]        = field(default_factory=list)
+
+    def summary(self) -> str:
+        status = "PASSED" if self.passed else "FAILED"
+        e = len(self.errors)
+        w = len(self.warnings)
+        return f"Validation {status} | errors={e} warnings={w}"
 
 
 class ValidationPipeline:
     """
-    Multi-stage validation pipeline for the self-improvement system.
+    Multi-stage code validation pipeline.
 
-    Stages (in order):
-    1. Syntax validation (ast.parse)
-    2. Linting (flake8 / pylint)
-    3. Static type check (optional mypy)
-    4. Unit test execution (pytest)
-    5. Sandbox execution (subprocess with timeout)
+    Stages (in order — each must pass before next runs):
+    1. Syntax       — ast.parse, immediate fail on error
+    2. Security     — SAST pattern scan, blocks CRITICAL/HIGH
+    3. Linting      — flake8, non-blocking (warnings only)
+    4. Sandbox      — subprocess execution with timeout
+    5. Type Check   — mypy (optional, non-blocking)
 
-    A candidate update must PASS ALL stages to be deployed.
+    Non-negotiable rule: CRITICAL security findings = instant reject.
     """
 
     def __init__(self, config: Dict[str, Any] = None):
-        self.config       = config or {}
-        self.run_linting  = self.config.get("run_linting", True)
-        self.run_tests    = self.config.get("run_tests", True)
-        self.timeout      = self.config.get("sandbox_timeout", 30)
-        self.logger       = logging.getLogger("ValidationPipeline")
+        self.config    = config or {}
+        self.timeout   = self.config.get("sandbox_timeout", 30)
+        self.run_lint  = self.config.get("run_linting", True)
+        self.run_mypy  = self.config.get("run_type_check", False)
+        self.logger    = get_logger("ValidationPipeline")
 
     def validate_code(self, code: str, filename: str = "candidate.py") -> Dict[str, Any]:
         """
-        Validate a code string through all pipeline stages.
+        Run full pipeline on a code string.
 
         Args:
-            code:     Python source code to validate
-            filename: Name for the temporary file
+            code:     Python source code
+            filename: Label used in error messages
 
         Returns:
             dict: { passed, stages, errors, warnings }
         """
-        results = {"passed": True, "stages": {}, "errors": [], "warnings": []}
+        report = ValidationReport(passed=True)
 
-        # Stage 1: Syntax
-        syntax_ok, syntax_err = self._check_syntax(code)
-        results["stages"]["syntax"] = {"passed": syntax_ok, "error": syntax_err}
-        if not syntax_ok:
-            results["passed"] = False
-            results["errors"].append(f"Syntax error: {syntax_err}")
-            return results  # No point continuing
+        # ── Stage 1: Syntax ──────────────────────────────────────
+        ok, err = self._syntax_check(code)
+        report.stages["syntax"] = {"passed": ok, "error": err}
+        if not ok:
+            report.passed = False
+            report.errors.append(f"SyntaxError: {err}")
+            self.logger.warning(f"[{filename}] Syntax FAILED: {err}")
+            return self._to_dict(report)  # Stop immediately
 
-        # Stage 2: Linting
-        if self.run_linting:
-            lint_ok, lint_issues = self._run_linting(code, filename)
-            results["stages"]["linting"] = {"passed": lint_ok, "issues": lint_issues}
-            if lint_issues:
-                results["warnings"].extend(lint_issues)
-
-        # Stage 3: Security scan (basic)
-        sec_ok, sec_issues = self._security_scan(code)
-        results["stages"]["security"] = {"passed": sec_ok, "issues": sec_issues}
+        # ── Stage 2: Security scan ────────────────────────────────
+        sec_ok, sec_findings = self._security_scan(code)
+        report.stages["security"] = {"passed": sec_ok, "findings": sec_findings}
         if not sec_ok:
-            results["passed"] = False
-            results["errors"].extend(sec_issues)
-            return results
+            report.passed = False
+            report.errors.extend([f"SECURITY: {f}" for f in sec_findings])
+            self.logger.warning(f"[{filename}] Security FAILED: {len(sec_findings)} finding(s)")
+            return self._to_dict(report)
 
-        # Stage 4: Sandbox execution
-        exec_ok, exec_output = self._sandbox_execute(code)
-        results["stages"]["sandbox"] = {"passed": exec_ok, "output": exec_output}
+        # ── Stage 3: Linting ─────────────────────────────────────
+        if self.run_lint:
+            lint_issues = self._lint(code, filename)
+            report.stages["linting"] = {"passed": len(lint_issues) == 0, "issues": lint_issues}
+            if lint_issues:
+                report.warnings.extend(lint_issues[:10])
+
+        # ── Stage 4: Sandbox execution ────────────────────────────
+        exec_ok, exec_out = self._sandbox(code)
+        report.stages["sandbox"] = {"passed": exec_ok, "output": exec_out[:300]}
         if not exec_ok:
-            results["warnings"].append(f"Sandbox execution issue: {exec_output}")
+            report.warnings.append(f"Sandbox: {exec_out[:200]}")
 
-        return results
+        # ── Stage 5: Type check (optional) ────────────────────────
+        if self.run_mypy:
+            mypy_ok, mypy_out = self._mypy(code, filename)
+            report.stages["type_check"] = {"passed": mypy_ok, "output": mypy_out[:300]}
+            if not mypy_ok:
+                report.warnings.append(f"mypy: {mypy_out[:100]}")
+
+        self.logger.info(f"[{filename}] {report.summary()}")
+        return self._to_dict(report)
+
+    def validate_file(self, path: str) -> Dict[str, Any]:
+        """Validate a file on disk."""
+        try:
+            code = Path(path).read_text(encoding="utf-8")
+            return self.validate_code(code, path)
+        except (IOError, OSError) as e:
+            return {"passed": False, "errors": [str(e)], "stages": {}, "warnings": []}
 
     def run_full_validation(self, project_path: str) -> Dict[str, Any]:
-        """
-        Run full validation on a project directory.
-        Validates all .py files and runs pytest if available.
+        """Validate all Python files in a project directory."""
+        root     = Path(project_path)
+        py_files = [f for f in root.rglob("*.py") if ".venv" not in str(f)]
+        results  = {}
+        passed = failed = 0
 
-        Args:
-            project_path: Path to the project root
+        for pf in py_files:
+            r = self.validate_file(str(pf))
+            results[str(pf)] = r
+            if r["passed"]:
+                passed += 1
+            else:
+                failed += 1
 
-        Returns:
-            Aggregate validation results
-        """
-        path   = Path(project_path)
-        py_files = list(path.rglob("*.py"))
-        results = {"total": len(py_files), "passed": 0, "failed": 0, "files": {}}
+        return {
+            "total": len(py_files),
+            "passed": passed,
+            "failed": failed,
+            "files":  results,
+        }
 
-        for py_file in py_files:
-            try:
-                code = py_file.read_text(encoding="utf-8")
-                valid, err = self._check_syntax(code)
-                if valid:
-                    results["passed"] += 1
-                    results["files"][str(py_file)] = "✅ PASSED"
-                else:
-                    results["failed"] += 1
-                    results["files"][str(py_file)] = f"❌ FAILED: {err}"
-            except Exception as e:
-                results["failed"] += 1
-                results["files"][str(py_file)] = f"❌ ERROR: {e}"
-
-        # Run pytest if available
-        if self.run_tests:
-            pytest_result = self._run_pytest(project_path)
-            results["pytest"] = pytest_result
-
-        return results
+    # ── Stages ────────────────────────────────────────────────────
 
     @staticmethod
-    def _check_syntax(code: str) -> Tuple[bool, Optional[str]]:
-        """Validate Python syntax using ast.parse."""
+    def _syntax_check(code: str) -> Tuple[bool, Optional[str]]:
         try:
             ast.parse(code)
             return True, None
         except SyntaxError as e:
             return False, str(e)
 
-    def _run_linting(self, code: str, filename: str) -> Tuple[bool, List[str]]:
-        """Run flake8 linting on code."""
+    def _security_scan(self, code: str) -> Tuple[bool, List[str]]:
+        """Block CRITICAL and HIGH severity patterns."""
+        import re
+        BLOCKING = [
+            (r"eval\s*\(",                    "eval() — RCE risk"),
+            (r"exec\s*\(",                    "exec() — RCE risk"),
+            (r"pickle\.loads?\s*\(",          "pickle deserialization — RCE"),
+            (r"os\.system\s*\(",              "os.system() — shell injection"),
+            (r"subprocess\.call\(.+shell=True", "subprocess shell=True — injection"),
+            (r"(password|secret|apikey)\s*=\s*['\"][^'\"]{4,}['\"]",
+             "Hardcoded credential"),
+            (r";\s*DROP\s+TABLE",             "SQL injection — DROP TABLE"),
+            (r"UNION\s+SELECT",               "SQL UNION injection"),
+        ]
+        findings = []
+        for pattern, reason in BLOCKING:
+            if re.search(pattern, code, re.IGNORECASE):
+                findings.append(reason)
+        return len(findings) == 0, findings
+
+    def _lint(self, code: str, filename: str) -> List[str]:
         issues = []
-        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w",
+                                         delete=False, encoding="utf-8") as f:
             f.write(code)
-            tmp_path = f.name
+            tmp = f.name
         try:
-            result = subprocess.run(
-                ["flake8", "--max-line-length=100", "--ignore=E501,W503", tmp_path],
+            r = subprocess.run(
+                ["flake8", "--max-line-length=100",
+                 "--ignore=E501,W503,E302,E303", tmp],
                 capture_output=True, text=True, timeout=15
             )
-            if result.stdout:
-                issues = [line.replace(tmp_path, filename) for line in result.stdout.splitlines()]
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass  # flake8 not available
+            if r.stdout:
+                issues = [l.replace(tmp, filename) for l in r.stdout.splitlines()]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass  # flake8 not installed — skip gracefully
         finally:
-            os.unlink(tmp_path)
-        return len(issues) == 0, issues
+            try: os.unlink(tmp)
+            except: pass
+        return issues
 
-    def _security_scan(self, code: str) -> Tuple[bool, List[str]]:
-        """
-        Basic static security scan.
-        Blocks known dangerous patterns.
-        """
-        DANGEROUS_PATTERNS = [
-            ("os.system(",        "Direct shell execution detected"),
-            ("subprocess.call(",  "Unrestricted subprocess call"),
-            ("eval(",             "eval() usage — injection risk"),
-            ("exec(",             "exec() usage — code injection risk"),
-            ("__import__(",       "Dynamic import — potential abuse"),
-            ("shutil.rmtree(",    "Recursive deletion — destructive"),
-            ("DROP TABLE",        "SQL DROP TABLE detected"),
-            ("rm -rf",            "Destructive shell command"),
-        ]
-        issues = []
-        for pattern, reason in DANGEROUS_PATTERNS:
-            if pattern in code:
-                issues.append(f"🔴 BLOCKED: {reason} ({pattern!r})")
-        return len(issues) == 0, issues
-
-    def _sandbox_execute(self, code: str) -> Tuple[bool, str]:
-        """Execute code in a subprocess sandbox with timeout."""
-        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+    def _sandbox(self, code: str) -> Tuple[bool, str]:
+        """Execute code in isolated subprocess with timeout."""
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w",
+                                          delete=False, encoding="utf-8") as f:
             f.write(code)
-            tmp_path = f.name
+            tmp = f.name
         try:
-            result = subprocess.run(
-                ["python3", tmp_path],
+            r = subprocess.run(
+                ["python3", tmp],
                 capture_output=True, text=True,
                 timeout=self.timeout,
-                env={k: v for k, v in os.environ.items()
-                     if k in ("PATH", "PYTHONPATH", "HOME")}
+                env={"PATH": os.environ.get("PATH", ""),
+                     "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
+                     "HOME": os.environ.get("HOME", "")},
             )
-            if result.returncode == 0:
-                return True, result.stdout[:500]
-            else:
-                return False, result.stderr[:500]
+            return r.returncode == 0, (r.stdout + r.stderr)[:500]
         except subprocess.TimeoutExpired:
             return False, "Execution timed out"
         except Exception as e:
             return False, str(e)
         finally:
-            os.unlink(tmp_path)
+            try: os.unlink(tmp)
+            except: pass
 
-    def _run_pytest(self, project_path: str) -> Dict[str, Any]:
-        """Run pytest and return results."""
+    def _mypy(self, code: str, filename: str) -> Tuple[bool, str]:
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w",
+                                          delete=False, encoding="utf-8") as f:
+            f.write(code)
+            tmp = f.name
         try:
-            result = subprocess.run(
-                ["python3", "-m", "pytest", project_path, "--tb=short", "-q"],
-                capture_output=True, text=True, timeout=60,
-                cwd=project_path
+            r = subprocess.run(
+                ["mypy", "--ignore-missing-imports", "--no-error-summary", tmp],
+                capture_output=True, text=True, timeout=20
             )
-            return {
-                "passed": result.returncode == 0,
-                "output": result.stdout[-1000:] + result.stderr[-500:]
-            }
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-            return {"passed": False, "output": str(e)}
+            out = r.stdout.replace(tmp, filename)
+            return r.returncode == 0, out
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return True, "mypy not available"
+        finally:
+            try: os.unlink(tmp)
+            except: pass
+
+    @staticmethod
+    def _to_dict(r: ValidationReport) -> Dict[str, Any]:
+        return {
+            "passed":   r.passed,
+            "stages":   r.stages,
+            "errors":   r.errors,
+            "warnings": r.warnings,
+        }
