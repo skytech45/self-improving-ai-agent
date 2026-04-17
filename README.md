@@ -1,143 +1,267 @@
 # 🤖 Self-Improving AI Agent System
 
-> An autonomous, production-grade AI agent system designed to assist in software development, cybersecurity, and web building, with the unique capability to continuously improve its own performance and safely update its own codebase.
+> A production-grade, research-level autonomous AI agent platform for software engineering, web development, and cybersecurity — with controlled self-improvement, multi-agent consensus, and full GitHub automation.
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python)
+![Version](https://img.shields.io/badge/Version-2.0.0-purple)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Active-brightgreen)
+![Status](https://img.shields.io/badge/Status-Production--Grade-brightgreen)
 ![Author](https://img.shields.io/badge/Author-skytech45-orange)
-![Version](https://img.shields.io/badge/Version-1.0.0-purple)
 
 ---
 
-## 🎯 Core Objective
+## ⚡ What This Is
 
-The **Self-Improving AI Agent System** is built to be a truly autonomous partner for developers and security researchers. It doesn't just execute tasks; it learns from its own execution history, identifies failures or inefficiencies, and generates verified code updates to improve its own internal logic and toolset.
+This is **not a chatbot wrapper**. It is a modular, security-first autonomous engineering platform with:
 
-## ✨ Key Features
-
-- 🧠 **Multi-Agent Orchestration**: Specialized agents for **Coding**, **Web Development**, and **Cybersecurity** with intelligent task routing.
-- 🔁 **Self-Improvement Loop**: A dedicated engine that analyzes execution logs, identifies bottlenecks or errors, and proposes codebase enhancements.
-- 🔐 **Security-First Architecture**: Mandatory validation pipeline including static analysis, dangerous pattern blocking, and sandboxed execution.
-- 📦 **Hybrid Memory System**: Combines short-term task context with long-term persistent storage and structured failure logging.
-- ✅ **Automated Validation**: Multi-stage verification (Syntax → Linting → Security → Sandbox) ensures only safe, working code is deployed.
-- 🐙 **GitHub Integration**: Full lifecycle automation—from identifying an improvement to committing and pushing the verified update.
-- ⏰ **Autonomous Scheduler**: Built-in background runner for periodic self-analysis and improvement cycles.
+- Multi-agent internal debate (Builder → Critic → Security → Optimizer → Consensus)
+- A mandatory multi-stage validation pipeline before any code touches the repo
+- Branch-based self-improvement with PR creation and auto-merge after benchmark pass
+- Regression detection to prevent deploying performance degradations
+- Formal benchmark suite with 12 test cases across coding, web, and security domains
+- Full audit log of every decision, deployment, and rejection
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ Architecture
 
-The system follows a modular, decoupled architecture to ensure reliability and extensibility:
-
-1.  **Core Engine**: The central brain that coordinates task planning, agent routing, and memory access.
-2.  **Skill Agents**: Specialized modules (Coding, Web, Security) that implement domain-specific logic and tools.
-3.  **Memory Manager**: Handles state persistence, context retrieval, and historical performance logging.
-4.  **Self-Improvement Engine**: The meta-cognitive layer that performs "introspection" on the system's performance.
-5.  **Validation Pipeline**: The safety gatekeeper that runs all candidate updates through a battery of tests and security checks.
-6.  **Git Manager**: Interfaces with the GitHub API to maintain version history and deploy improvements.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    main.py  (CLI entry point)                    │
+│         run | debate | improve | benchmark | scan | status       │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+             ┌───────────▼───────────┐
+             │     Orchestrator       │  orchestration/
+             │  Sanitize → Plan       │
+             │  → Dispatch → Aggregate│
+             └──┬──┬──┬──────────────┘
+    ┌───────────┘  │  └──────────────┐
+    ▼              ▼                 ▼
+┌──────────┐ ┌──────────┐ ┌──────────────────┐
+│ Builder  │ │ Security │ │  Multi-Agent      │
+│  Agent   │ │  Agent   │ │  Debate Pipeline  │
+└──────────┘ └──────────┘ │  Builder+Critic   │
+                          │  +Security+Optim  │
+                          │  → ConsensusEngine│
+                          └──────────────────┘
+                         │
+          ┌──────────────▼──────────────┐
+          │  MemoryManager (4 layers)    │  memory/
+          │  Short | Long | Episodic     │
+          │  | Failure+Corrections       │
+          └──────────────┬──────────────┘
+                         │
+          ┌──────────────▼──────────────┐
+          │  ImprovementEngine           │  self_improvement/
+          │  Analyze → Generate          │
+          │  → Validate → Benchmark      │
+          │  → Branch → PR → Auto-Merge  │
+          └──────────────┬──────────────┘
+                         │
+          ┌──────────────▼──────────────┐
+          │  ValidationPipeline          │  validation/
+          │  Syntax → Security → Lint    │
+          │  → Sandbox → Type-Check      │
+          └──────────────┬──────────────┘
+                         │
+          ┌──────────────▼──────────────┐
+          │  BenchmarkRunner             │  benchmarks/
+          │  12 cases: coding+web+sec    │
+          │  Regression detection        │
+          └──────────────┬──────────────┘
+                         │
+          ┌──────────────▼──────────────┐
+          │  GitManager                  │  github/
+          │  Branch → Commit → PR        │
+          │  Auto-merge | Rollback       │
+          └─────────────────────────────┘
+```
 
 ---
 
-## 📂 Project Structure
+## 📁 Project Structure
 
-```text
+```
 self-improving-ai-agent/
-├── main.py                          # Entry point and CLI interface
-├── core/
-│   ├── engine.py                    # Central orchestration logic
-│   └── config.py                    # Configuration management
+├── main.py                          # Entry point — 7 CLI modes
+├── orchestration/
+│   ├── orchestrator.py              # Central task orchestrator
+│   ├── task_planner.py              # Task decomposition
+│   └── tool_controller.py           # Tool dispatch registry
 ├── agents/
-│   ├── base_agent.py                # Abstract base for all agents
-│   ├── coding_agent.py              # Python development & debugging
-│   ├── web_agent.py                 # Web scaffolding & API development
-│   └── security_agent.py            # Vulnerability scanning & analysis
+│   ├── base_agent.py                # Abstract base (AgentResult)
+│   ├── builder_agent.py             # Primary solution generator
+│   ├── critic_agent.py              # Adversarial code reviewer
+│   ├── security_agent.py            # Ethical security analyst
+│   ├── optimizer_agent.py           # Performance analyst
+│   └── consensus.py                 # Weighted voting engine
 ├── memory/
-│   └── memory_manager.py            # Persistence and context management
-├── self_improvement/
-│   └── improvement_engine.py        # Introspection and code generation
+│   └── memory_manager.py            # 4-layer hybrid memory
 ├── validation/
-│   └── validator.py                 # Safety and correctness verification
+│   └── validator.py                 # Multi-stage validation pipeline
+├── security/
+│   └── scanner.py                   # SAST — OWASP-based static scan
+├── evaluation/
+│   └── evaluation_engine.py         # Metrics + regression detection
+├── self_improvement/
+│   └── improvement_engine.py        # Controlled improvement cycle
 ├── github/
-│   └── git_manager.py               # Git/GitHub automation
+│   └── git_manager.py               # Branch + PR + merge + rollback
+├── benchmarks/
+│   └── benchmark_suite.py           # 12-case formal benchmark suite
 ├── scheduler/
-│   └── task_scheduler.py            # Background cycle management
+│   └── task_scheduler.py            # Background daemon scheduler
+├── tools/
+│   └── file_tool.py                 # Safe file system interface
 ├── utils/
-│   └── logger.py                    # Structured system logging
+│   └── logger.py                    # Centralized logging
 ├── tests/
-│   └── test_agents.py               # Comprehensive test suite
+│   └── test_full_system.py          # 30+ unit tests
 ├── configs/
-│   └── config.yaml                  # System-wide settings
-├── Dockerfile                       # Containerized deployment
-└── requirements.txt                 # Project dependencies
+│   └── config.yaml                  # Full system configuration
+├── ARCHITECTURE.md                  # System design documentation
+└── Dockerfile                       # Non-root containerized deployment
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Python 3.11 or higher
-- A GitHub Access Token (for automation features)
-- OpenAI API Key (optional, for LLM-powered features)
-
-### Installation
 ```bash
-# Clone the repository
 git clone https://github.com/skytech45/self-improving-ai-agent.git
 cd self-improving-ai-agent
-
-# Install dependencies
 pip install -r requirements.txt
-```
 
-### Configuration
-Set up your environment variables:
-```bash
-export GITHUB_ACCESS_TOKEN="your_token_here"
-export OPENAI_API_KEY="your_openai_key"
-export GITHUB_REPO="skytech45/self-improving-ai-agent"
-```
+export GITHUB_ACCESS_TOKEN=your_token
+export GITHUB_REPO=skytech45/self-improving-ai-agent
 
-### Usage
-```bash
-# Execute a specific task
-python main.py run --task "Implement a secure password hashing function in Python"
+# Run a coding task
+python main.py run --task "write a binary search function in Python"
 
-# Manually trigger a self-improvement cycle
-python main.py improve
+# Multi-agent debate (Builder+Critic+Security+Optimizer)
+python main.py debate --task "design a rate limiter system"
 
-# Start the background scheduler (runs improvement cycle every 24 hours)
-python main.py schedule --interval 24
+# Security scan the codebase
+python main.py scan --target agents/
 
-# View current system statistics and status
+# Run the benchmark suite
+python main.py benchmark
+
+# Validate a Python file
+python main.py validate --file agents/builder_agent.py
+
+# Trigger self-improvement cycle (dry-run)
+python main.py improve --dry-run
+
+# Show system status
 python main.py status
 ```
 
 ---
 
-## 🔐 Security & Safety Policy
+## 🔁 Self-Improvement Loop
 
-Safety is the paramount constraint of this system. The following measures are strictly enforced:
-- **No Direct Execution**: No self-generated code is ever executed directly on the host system without validation.
-- **Sandbox Isolation**: All candidate updates and generated scripts run in a restricted subprocess sandbox.
-- **Pattern Blocking**: A security scanner blocks dangerous keywords and functions (e.g., `eval`, `exec`, `os.system`).
-- **Atomic Updates**: Improvements are applied as atomic Git commits, allowing for instant rollback if issues are detected post-deployment.
-- **Non-Root Operation**: The system is designed to run with minimal privileges, especially within containerized environments.
+```
+1. COLLECT LOGS (failures, latency, repeated errors)
+2. ANALYZE    → identify failure clusters and bottlenecks
+3. GENERATE   → create improvement candidates
+4. VALIDATE   → syntax + security + sandbox (MANDATORY)
+5. BENCHMARK  → run 12-case suite, check for regression
+6. If PASS:
+     create branch → commit → open PR → auto-merge
+7. If FAIL:
+     log to failure memory → DO NOT DEPLOY → store correction
+```
+
+**Improvement only triggers when:**
+> `performance_gain > 0.02 AND no_regression_detected`
+
+---
+
+## 🧠 Multi-Agent Debate
+
+```
+Task Input
+    │
+    ▼
+BuilderAgent    → generates solution (weight: 35%)
+    │
+    ├─→ CriticAgent     → adversarial review (weight: 30%)
+    ├─→ SecurityAgent   → security analysis  (weight: 25%)
+    └─→ OptimizerAgent  → performance review (weight: 10%)
+                │
+                ▼
+         ConsensusEngine
+         ┌─ weighted score >= 0.65?
+         ├─ zero BLOCKING security issues?
+         └─ builder.passed = True?
+              │
+         APPROVED / REJECTED
+```
+
+---
+
+## 🔐 Security Model
+
+| Layer | Control |
+|-------|---------|
+| Execution | Subprocess sandbox with hard timeout |
+| SAST | 20+ OWASP-based static patterns |
+| Secrets | Environment variables only — never committed |
+| Auth | Token-scoped GitHub API |
+| Injection | Input sanitization before all LLM routing |
+| Blocking | CRITICAL/HIGH findings veto any deployment |
+
+---
+
+## 🧪 Running Tests
+
+```bash
+python -m pytest tests/ -v
+# or
+python tests/test_full_system.py
+```
+
+30+ test cases covering: agents, consensus, validation, memory, scanner.
+
+---
+
+## 🐳 Docker
+
+```bash
+docker build -t self-improving-ai-agent .
+docker run \
+  -e GITHUB_ACCESS_TOKEN=xxx \
+  -e GITHUB_REPO=skytech45/self-improving-ai-agent \
+  self-improving-ai-agent
+```
+
+---
+
+## 📊 Benchmark Suite
+
+12 formal test cases across 3 categories:
+- **Coding** (5): binary search, stack, CLI tool, email validator, retry decorator
+- **Web** (3): FastAPI endpoint, Flask API, HTML landing page
+- **Security** (4): port scan, header audit, hash demo, injection prevention
+
+Score = `success_rate * 0.70 + latency_score * 0.30`
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE)
 
 ---
 
 ## 👨‍💻 Author
 
-**Sachin Kumar (skytech45)**  
-Electronics Engineering Student | AI & Cybersecurity Enthusiast  
+**Sachin Kumar (skytech45)**
+Electronics Engineering Student | AI & Cybersecurity Enthusiast
 📍 Bihar, India | [GitHub](https://github.com/skytech45)
 
 ---
-*Developed as a demonstration of autonomous, self-evolving software systems.*
+
+*Production-grade. Research-level. Actively maintained.*
