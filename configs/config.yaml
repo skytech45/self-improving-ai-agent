@@ -1,0 +1,34 @@
+# Self-Improving AI Agent System — Configuration
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  temperature: 0.3
+  max_tokens: 2048
+memory:
+  short_term_size: 100
+  vector_db: faiss
+  persist_path: memory/store
+github:
+  repo: "skytech45/self-improving-ai-agent"
+  branch: main
+  auto_push: true
+  tag_stable: true
+validation:
+  run_linting: true
+  run_tests: true
+  run_security_scan: true
+  sandbox_timeout: 30
+improvement:
+  cycle_interval_hours: 24
+  max_candidates_per_cycle: 3
+  min_test_pass_rate: 0.90
+security:
+  sandbox_mode: true
+  allow_network: false
+  max_exec_time: 30
+agents:
+  coding:
+    language: python
+  security:
+    sandbox_mode: true
+    safe_targets_only: true
